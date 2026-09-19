@@ -3,12 +3,20 @@ package com.fetchly.app
 import android.content.Context
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
+import java.net.HttpURLConnection
+import java.net.URL
 
 data class ResolvedMedia(
     val title: String,
     val duration: Int,
     val heights: List<Int>,
     val hasAudio: Boolean
+)
+
+data class ResolveResult(
+    val media: ResolvedMedia?,
+    val imageUrl: String?,
+    val error: String?
 )
 
 interface MediaProvider {
@@ -61,20 +69,85 @@ class YtDlpProvider : MediaProvider {
     }
 }
 
+/**
+ * Resolves downloadable images: a direct image link, or the og:image of a page
+ * (used for photo posts on sites where the video engine finds no video).
+ */
+object ImageResolver {
+
+    fun ogImage(context: Context, pageUrl: String): String? {
+        // direct image link?
+        if (Regex(".*\\.(jpe?g|png|webp)(\\?.*)?$", RegexOption.IGNORE_CASE).matches(pageUrl)) {
+            return pageUrl
+        }
+        return try {
+            val conn = URL(pageUrl).openConnection() as HttpURLConnection
+            conn.connectTimeout = 8000
+            conn.readTimeout = 8000
+            conn.instanceFollowRedirects = true
+            conn.setRequestProperty(
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            )
+            val cookie = CookieStore.cookieHeader(context, pageUrl)
+            if (cookie != null) conn.setRequestProperty("Cookie", cookie)
+
+            val reader = conn.inputStream.bufferedReader()
+            val sb = StringBuilder()
+            try {
+                while (sb.length < 500_000) {
+                    val line = reader.readLine() ?: break
+                    sb.append(line)
+                }
+            } finally {
+                reader.close()
+            }
+            val html = sb.toString()
+            val m = Regex(
+                "<meta[^>]+property=[\"']og:image(?::secure_url)?[\"'][^>]+content=[\"']([^\"']+)[\"']",
+                RegexOption.IGNORE_CASE
+            ).find(html)
+                ?: Regex(
+                    "<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']og:image[\"']",
+                    RegexOption.IGNORE_CASE
+                ).find(html)
+            m?.groupValues?.get(1)
+                ?.replace("&", "&")
+                ?.takeIf { it.startsWith("http") }
+        } catch (e: Exception) {
+            null
+        }
+    }
+}
+
 object Providers {
     // Modular provider registry. Add new providers to this list - the rest of
     // the app talks to them only through the MediaProvider interface.
     private val providers = listOf<MediaProvider>(YtDlpProvider())
 
-    fun resolve(context: Context, url: String): ResolvedMedia? {
+    // Resolves video/audio via providers and, when no video was found, an
+    // image (photo posts). Also returns the raw failure reason for display.
+    fun resolveDetailed(context: Context, url: String): ResolveResult {
+        var media: ResolvedMedia? = null
+        var error: String? = null
         for (p in providers) {
             try {
-                val r = p.resolve(context, url)
-                if (r != null) return r
+                media = p.resolve(context, url)
+                if (media != null) break
             } catch (e: Exception) {
-                // this provider could not handle the url - try the next one
+                error = e.message
             }
         }
-        return null
+
+        // image option only makes sense when there is no video to grab
+        var imageUrl: String? = null
+        if (media == null || (media.heights.isEmpty() && !media.hasAudio)) {
+            imageUrl = ImageResolver.ogImage(context, url)
+        }
+
+        if (media == null && imageUrl == null) {
+            return ResolveResult(null, null, (error ?: "").ifBlank { "no media found" })
+        }
+        return ResolveResult(media, imageUrl, error)
     }
 }

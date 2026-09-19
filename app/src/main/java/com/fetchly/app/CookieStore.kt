@@ -7,6 +7,18 @@ import java.io.File
 
 object CookieStore {
 
+    // raw cookie header string for a URL (used by the image resolver)
+    fun cookieHeader(context: Context, url: String): String? {
+        return try {
+            CookieManager.getInstance().flush()
+            val host = Uri.parse(url).host ?: return null
+            CookieManager.getInstance().getCookie("https://$host")
+                ?: CookieManager.getInstance().getCookie("http://$host")
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     // Exports WebView cookies (from logins made in the in-app browser) into a
     // Netscape cookie file that yt-dlp uses via --cookies. This is what makes
     // account-only / private content downloadable.

@@ -8,6 +8,9 @@ import androidx.appcompat.app.AlertDialog
 
 object DownloadFlows {
 
+    @Volatile
+    private var resolving = false
+
     // Resolve a URL through the provider system and let the user pick a real,
     // available quality. Starts the download service on selection.
     fun start(activity: Activity, url: String) {
@@ -15,62 +18,53 @@ object DownloadFlows {
             Toast.makeText(activity, R.string.engine_loading, Toast.LENGTH_SHORT).show()
             return
         }
+        if (FetchlyApp.engineUpdating) {
+            Toast.makeText(activity, R.string.engine_updating_wait, Toast.LENGTH_LONG).show()
+            return
+        }
+        if (resolving) return
+        resolving = true
         Toast.makeText(activity, R.string.resolving, Toast.LENGTH_SHORT).show()
         Thread {
-            val media = Providers.resolve(activity, url)
+            val result = Providers.resolveDetailed(activity, url)
             activity.runOnUiThread {
+                resolving = false
                 if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
-                if (media == null) {
+                if (result.media == null && result.imageUrl == null) {
+                    showErrorDialog(activity, url, result.error)
+                } else {
+                    val view = QualityPicker.buildView(activity, result) { mode, height, directUrl ->
+                        DownloadService.start(activity, directUrl ?: url, mode, height)
+                        Toast.makeText(activity, R.string.download_started, Toast.LENGTH_SHORT).show()
+                    }
                     AlertDialog.Builder(activity)
-                        .setMessage(R.string.no_media_detected)
-                        .setPositiveButton(R.string.try_again) { _, _ -> start(activity, url) }
-                        .setNeutralButton(R.string.open_in_browser) { _, _ ->
-                            try {
-                                activity.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                )
-                            } catch (e: Exception) {
-                            }
-                        }
+                        .setTitle(R.string.choose_quality)
+                        .setView(view)
                         .setNegativeButton(android.R.string.cancel, null)
                         .show()
-                } else {
-                    showQualityDialog(activity, url, media)
                 }
             }
         }.start()
     }
 
-    private fun showQualityDialog(activity: Activity, url: String, media: ResolvedMedia) {
-        val items = mutableListOf<String>()
-        for (h in media.heights) items.add(activity.getString(R.string.video_p, h))
-        if (media.hasAudio) {
-            items.add(activity.getString(R.string.audio_mp3))
-            items.add(activity.getString(R.string.audio_original))
+    private fun showErrorDialog(activity: Activity, url: String, error: String?) {
+        var msg = activity.getString(R.string.no_media_detected)
+        if (!error.isNullOrBlank()) {
+            msg += "\n\n" + activity.getString(R.string.reason_fmt, error.take(300))
         }
-        val subtitle = if (media.duration > 0) {
-            media.title + "\n" + Utils.formatDuration(media.duration)
-        } else {
-            media.title
+        if (error?.contains("sign in", ignoreCase = true) == true ||
+            error?.contains("login", ignoreCase = true) == true
+        ) {
+            msg += "\n\n" + activity.getString(R.string.login_hint)
         }
         AlertDialog.Builder(activity)
-            .setTitle(R.string.choose_quality)
-            .setMessage(subtitle)
-            .setItems(items.toTypedArray()) { _, which ->
-                val mode: String
-                val height: Int
-                if (which < media.heights.size) {
-                    mode = "video"
-                    height = media.heights[which]
-                } else if (which == media.heights.size) {
-                    mode = "mp3"
-                    height = 0
-                } else {
-                    mode = "audio"
-                    height = 0
+            .setMessage(msg)
+            .setPositiveButton(R.string.try_again) { _, _ -> start(activity, url) }
+            .setNeutralButton(R.string.open_in_browser) { _, _ ->
+                try {
+                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                } catch (e: Exception) {
                 }
-                DownloadService.start(activity, url, mode, height)
-                Toast.makeText(activity, R.string.download_started, Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
