@@ -1,11 +1,11 @@
 package com.fetchly.app
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.TextView
+import androidx.fragment.app.FragmentTransaction
 
 class MainActivity : BaseActivity() {
 
@@ -41,19 +41,15 @@ class MainActivity : BaseActivity() {
         }
 
         showTab(0)
-        handleIntent(intent)
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handleIntent(intent)
-    }
-
-    // uses show/hide so tab state (e.g. the browser page) survives switching
+    // uses show/hide with a soft fade so tab state (e.g. the browser page)
+    // survives switching and transitions feel smooth
     fun showTab(index: Int) {
         if (index !in fragments.indices) return
         if (index == current) return
         val tx = supportFragmentManager.beginTransaction()
+        tx.setTransition(FragmentTransaction.TRANSIT_FRAGMENT_FADE)
         for ((i, f) in fragments.withIndex()) {
             if (i == index) {
                 if (f.isAdded) tx.show(f) else tx.add(R.id.container, f)
@@ -73,15 +69,6 @@ class MainActivity : BaseActivity() {
     fun openBrowserSearch(query: String) {
         browserFragment.openSearch(query)
         showTab(3)
-    }
-
-    private fun handleIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEND) {
-            val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
-            val url = Regex("https?://\\S+").find(text)?.value ?: return
-            showTab(0)
-            homeFragment.setUrl(url)
-        }
     }
 
     @Deprecated("Deprecated in Java")

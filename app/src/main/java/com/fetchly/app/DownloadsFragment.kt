@@ -16,6 +16,7 @@ import androidx.fragment.app.Fragment
 class DownloadsFragment : Fragment(R.layout.fragment_downloads) {
 
     private val handler = Handler(Looper.getMainLooper())
+    private var lastFingerprint = ""
     private val poller = object : Runnable {
         override fun run() {
             view?.let { render(it) }
@@ -41,6 +42,10 @@ class DownloadsFragment : Fragment(R.layout.fragment_downloads) {
     private fun render(view: View) {
         val ll = view.findViewById<LinearLayout>(R.id.llItems)
         val records = Db.get(requireContext()).allDownloads()
+        // skip re-rendering when nothing actually changed - keeps scrolling smooth
+        val fingerprint = records.joinToString("|") { "${it.id}:${it.status}:${it.progress}:${it.speed}" }
+        if (fingerprint == lastFingerprint) return
+        lastFingerprint = fingerprint
         ll.removeAllViews()
         if (records.isEmpty()) {
             val tv = TextView(requireContext())

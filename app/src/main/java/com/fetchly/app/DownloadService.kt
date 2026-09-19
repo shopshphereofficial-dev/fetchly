@@ -16,6 +16,8 @@ import androidx.core.content.ContextCompat
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Collections
 
 class DownloadService : Service() {
@@ -54,6 +56,7 @@ class DownloadService : Service() {
     }
 
     private val runningIds = Collections.synchronizedSet(HashSet<Long>())
+    private val cancelledImageIds = Collections.synchronizedSet(HashSet<Long>())
     private val SPEED_REGEX = Regex("at\\s+([\\d.]+\\s*[KMGT]?i?B/s)")
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -74,16 +77,24 @@ class DownloadService : Service() {
             ACTION_CANCEL -> {
                 val id = intent.getLongExtra("id", -1L)
                 if (id > 0) {
-                    // kills the yt-dlp process for this download
-                    YoutubeDL.getInstance().destroyProcessById("fetchly_$id")
+                    cancelledImageIds.add(id)
+                    val killed = YoutubeDL.getInstance().destroyProcessById("fetchly_$id")
+                    if (!killed && !runningIds.contains(id)) {
+                        // still queued (not started yet) - mark it cancelled
+                        val rec = Db.get(this).download(id)
+                        if (rec != null && rec.status == Db.STATUS_QUEUED) {
+                            val cv = ContentValues().apply { put("status", Db.STATUS_CANCELLED) }
+                            Db.get(this).updateDownload(id, cv)
+                        }
+                    }
                 }
             }
             ACTION_RETRY -> {
                 val id = intent.getLongExtra("id", -1L)
                 if (id > 0) {
-                    val db = Db.get(this)
+                    cancelledImageIds.remove(id)
                     val cv = ContentValues().apply { put("status", Db.STATUS_QUEUED) }
-                    db.updateDownload(id, cv)
+                    Db.get(this).updateDownload(id, cv)
                     pumpQueue()
                 }
             }
@@ -92,7 +103,7 @@ class DownloadService : Service() {
                 val mode = intent.getStringExtra("mode") ?: "video"
                 val height = intent.getIntExtra("height", 0)
 
-                if (Prefs.getWifiOnly(this) && isMetered()) {
+                if (Prefs.getWifiOnly(this) && isMetered() && mode != "image") {
                     val id = Db.get(this).insertDownload(url, url, mode, height)
                     val cv = ContentValues().apply {
                         put("status", Db.STATUS_FAILED)
@@ -140,6 +151,7 @@ class DownloadService : Service() {
                 }
             } finally {
                 runningIds.remove(id)
+                cancelledImageIds.remove(id)
                 pumpQueue()
                 maybeStop()
             }
@@ -149,8 +161,13 @@ class DownloadService : Service() {
     private fun doDownload(id: Long) {
         val db = Db.get(this)
         val rec = db.download(id) ?: return
-        val url = rec.url
 
+        if (rec.mode == "image") {
+            directDownload(id, rec)
+            return
+        }
+
+        val url = rec.url
         db.updateDownload(id, ContentValues().apply { put("status", Db.STATUS_PREPARING) })
 
         val title = try {
@@ -253,6 +270,84 @@ class DownloadService : Service() {
         notifyDone(id, title, true, "")
     }
 
+    // plain HTTP download for images (direct URL from the image resolver)
+    private fun directDownload(id: Long, rec: Db.DownloadRecord) {
+        val db = Db.get(this)
+        try {
+            val name = imageFileName(rec.url, id)
+            db.updateDownload(id, ContentValues().apply { put("title", name) })
+            db.updateDownload(id, ContentValues().apply { put("status", Db.STATUS_DOWNLOADING) })
+
+            val workDir = File(File(getExternalFilesDir(null), "work"), "img_${id}").apply { mkdirs() }
+            db.updateDownload(id, ContentValues().apply { put("path", workDir.absolutePath) })
+
+            val conn = URL(rec.url).openConnection() as HttpURLConnection
+            conn.connectTimeout = 15000
+            conn.readTimeout = 20000
+            conn.instanceFollowRedirects = true
+            conn.setRequestProperty(
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            )
+            val total = conn.contentLengthLong
+            val file = File(workDir, name)
+            var downloaded = 0L
+            conn.inputStream.use { input ->
+                file.outputStream().use { out ->
+                    val buf = ByteArray(16384)
+                    while (true) {
+                        if (cancelledImageIds.contains(id)) throw YoutubeDL.CanceledException()
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        downloaded += n
+                        if (total > 0) {
+                            val p = (downloaded * 100 / total).toInt()
+                            db.updateDownload(id, ContentValues().apply { put("progress", p) })
+                            notifyProgress(id, name, p, "")
+                        }
+                    }
+                }
+            }
+
+            val mime = mimeFor(file)
+            val uri = saveToDownloads(file, mime)
+            db.updateDownload(
+                id,
+                ContentValues().apply {
+                    put("status", Db.STATUS_COMPLETED)
+                    put("uri", uri.toString())
+                    put("mime", mime)
+                    put("size", file.length())
+                    put("progress", 100)
+                }
+            )
+            workDir.deleteRecursively()
+            notifyDone(id, name, true, "")
+        } catch (e: Exception) {
+            val cancelled = e is YoutubeDL.CanceledException || cancelledImageIds.remove(id)
+            db.updateDownload(
+                id,
+                ContentValues().apply {
+                    put("status", if (cancelled) Db.STATUS_CANCELLED else Db.STATUS_FAILED)
+                }
+            )
+            notifyDone(id, rec.url, false, if (cancelled) "" else (e.message ?: ""))
+        }
+    }
+
+    private fun imageFileName(url: String, id: Long): String {
+        val path = try {
+            Uri.parse(url).path ?: ""
+        } catch (e: Exception) {
+            ""
+        }
+        val raw = path.substringAfterLast('/')
+        val ext = raw.substringAfterLast('.', "").lowercase()
+        val safeExt = if (ext.length in 2..5) ext else "jpg"
+        return "image_${id}.$safeExt"
+    }
+
     private fun parseSpeed(line: String?): String {
         if (line == null) return ""
         val m = SPEED_REGEX.find(line)
@@ -340,6 +435,7 @@ class DownloadService : Service() {
             "opus" -> "audio/ogg"
             "jpg", "jpeg" -> "image/jpeg"
             "png" -> "image/png"
+            "webp" -> "image/webp"
             else -> "application/octet-stream"
         }
     }

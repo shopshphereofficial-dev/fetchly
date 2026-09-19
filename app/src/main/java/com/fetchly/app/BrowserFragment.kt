@@ -30,6 +30,14 @@ class BrowserFragment : Fragment(R.layout.fragment_browser) {
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: android.webkit.WebResourceRequest?
+            ): android.webkit.WebResourceResponse? {
+                // block known ad/tracker hosts inside the browser
+                return if (AdBlocker.isAd(request?.url?.toString())) AdBlocker.emptyResponse() else null
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 etAddress.setText(url)
                 try {

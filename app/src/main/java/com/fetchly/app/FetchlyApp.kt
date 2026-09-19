@@ -26,11 +26,17 @@ class FetchlyApp : Application() {
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-            updateEngineIfStale(this)
+            engineUpdating = true
+            try {
+                updateEngineIfStale(this)
+            } finally {
+                engineUpdating = false
+            }
         }.start()
     }
 
-    // keeps the yt-dlp engine fresh (once a day) so site changes do not break downloads
+    // keeps the yt-dlp engine fresh (at least once a day) so site changes do
+    // not break downloads; first launch always updates (~18MB, about a minute)
     private fun updateEngineIfStale(context: android.content.Context) {
         try {
             val prefs = context.getSharedPreferences("engine", MODE_PRIVATE)
@@ -46,5 +52,8 @@ class FetchlyApp : Application() {
     companion object {
         @Volatile
         var engineReady = false
+
+        @Volatile
+        var engineUpdating = false
     }
 }
