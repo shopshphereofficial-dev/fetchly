@@ -81,4 +81,12 @@
     <string name="notif_cancel">Cancel</string>
     <string name="search_results_title">Search results</string>
     <string name="open_failed">Could not open this file</string>
+    <string name="sec_video">VIDEO</string>
+    <string name="sec_audio">AUDIO</string>
+    <string name="sec_image">IMAGE</string>
+    <string name="btn_save_image">Save image</string>
+    <string name="login_hint">This site may need login. Open the Browser tab, log in, then try again.</string>
+    <string name="engine_updating_wait">Engine is updating (first run takes about 1 minute). Please wait and try again.</string>
+    <string name="reason_fmt">Details: %s</string>
+    <string name="close">Close</string>
 </resources>

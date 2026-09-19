@@ -81,4 +81,12 @@
     <string name="notif_cancel">रद्द करें</string>
     <string name="search_results_title">सर्च के नतीजे</string>
     <string name="open_failed">यह फ़ाइल नहीं खुल सकी</string>
+    <string name="sec_video">वीडियो</string>
+    <string name="sec_audio">ऑडियो</string>
+    <string name="sec_image">इमेज</string>
+    <string name="btn_save_image">इमेज सेव करें</string>
+    <string name="login_hint">इस साइट पर लॉगिन की ज़रूरत हो सकती है। Browser टैब खोलकर लॉगिन करें, फिर कोशिश करें।</string>
+    <string name="engine_updating_wait">इंजन अपडेट हो रहा है (पहली बार ~1 मिनट)। थोड़ा इंतज़ार करके फिर कोशिश करें।</string>
+    <string name="reason_fmt">जानकारी: %s</string>
+    <string name="close">बंद करें</string>
 </resources>

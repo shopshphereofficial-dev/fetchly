@@ -81,4 +81,12 @@
     <string name="notif_cancel">منسوخ کریں</string>
     <string name="search_results_title">تلاش کے نتائج</string>
     <string name="open_failed">یہ فائل نہیں کھل سکی</string>
+    <string name="sec_video">ویڈیو</string>
+    <string name="sec_audio">آڈیو</string>
+    <string name="sec_image">تصویر</string>
+    <string name="btn_save_image">تصویر محفوظ کریں</string>
+    <string name="login_hint">اس سائٹ پر لاگ ان کی ضرورت ہو سکتی ہے۔ Browser ٹیب کھول کر لاگ ان کریں، پھر کوشش کریں۔</string>
+    <string name="engine_updating_wait">انجن اپڈیٹ ہو رہا ہے (پہلی بار ~1 منٹ)۔ تھوڑا انتظار کر کے دوبارہ کوشش کریں۔</string>
+    <string name="reason_fmt">تفصیل: %s</string>
+    <string name="close">بند کریں</string>
 </resources>

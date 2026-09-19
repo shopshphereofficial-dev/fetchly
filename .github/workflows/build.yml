@@ -36,13 +36,13 @@ jobs:
         run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Fetchly-v1.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Fetchly-v1.1.apk
 
       - name: Create release with APK
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create v1.0 Fetchly-v1.0.apk \
-            --title "Fetchly v1.0 (media browser + downloader + player)" \
-            --notes "Home/Downloads/Music/Browser/Settings navigation, real quality picker, background downloads with cancel/retry, video + audio players, bookmarks/history, light/dark theme, English/Hindi/Urdu. Personal use only." \
-            || gh release upload v1.0 Fetchly-v1.0.apk --clobber
+          gh release create v1.1 Fetchly-v1.1.apk \
+            --title "Fetchly v1.1 (share popup, image downloads, ad-block browser)" \
+            --notes "Share opens a small popup with VIDEO/AUDIO/IMAGE options and returns to the source app. Real error details shown. Browser blocks ad hosts. Smoother downloads list. Personal use only." \
+            || gh release upload v1.1 Fetchly-v1.1.apk --clobber
