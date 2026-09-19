@@ -68,7 +68,7 @@ object QualityPicker {
         tv.text = context.getString(labelRes)
         tv.setTextColor(context.getColor(R.color.primary))
         tv.textSize = 12f
-        tv.textStyle = android.graphics.Typeface.BOLD
+        tv.setTypeface(null, android.graphics.Typeface.BOLD)
         tv.setPadding(8, 18, 8, 4)
         return tv
     }
